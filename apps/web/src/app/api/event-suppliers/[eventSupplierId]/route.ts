@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { eventSuppliers, events } from '@/lib/db/schema'; // Precisa de 'events' para checar o organizador
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { eq, and } from 'drizzle-orm';
 
 interface EventSupplierDeleteRouteContext {
@@ -13,7 +13,7 @@ interface EventSupplierDeleteRouteContext {
 
 // DELETE: Desassociar um fornecedor de um evento (remove a entrada da tabela event_suppliers)
 export async function DELETE(request: NextRequest, { params }: EventSupplierDeleteRouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }

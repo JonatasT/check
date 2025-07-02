@@ -2,13 +2,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 
 // Base directory for uploads, certifique-se que é o mesmo usado no upload
 const BASE_UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
 export async function GET(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
 
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado. Faça login para baixar arquivos.' }, { status: 401 });

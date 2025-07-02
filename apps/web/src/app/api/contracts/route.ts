@@ -1,12 +1,11 @@
 // apps/web/src/app/api/contracts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { contracts } from '@/lib/db/schema';
-import { users } from '@/lib/db/schema'; // Para buscar o ID do usuário, se necessário
-import { eq } from 'drizzle-orm';
+import { contracts, users } from '@/lib/db/schema'; // users importado
+import { eq, and } from 'drizzle-orm'; // and importado
 import { promises as fs } from 'fs';
 import path from 'path';
-import { getAuth } from '@clerk/nextjs/server'; // Para obter o usuário logado
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 
 // Certifique-se de que o diretório de uploads existe
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'contracts');
@@ -23,39 +22,37 @@ async function ensureUploadDirExists() {
 
 // GET: Listar contratos
 export async function GET(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
 
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado. Faça login para ver os contratos.' }, { status: 401 });
   }
 
-  // Opcional: Adicionar filtros, como eventId, via searchParams
   const { searchParams } = new URL(request.url);
   const eventIdParam = searchParams.get('eventId');
 
   try {
-    const userRecord = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkUserId)).limit(1);
-    if (!userRecord.length) {
-        return NextResponse.json({ error: 'Usuário não encontrado no banco de dados local.' }, { status: 404 });
-    }
-    // const internalUserId = userRecord[0].id; // Use este se seus IDs de FK forem seriais internos
+    // Não é mais necessário buscar userRecord se uploadedByUserId no schema contracts armazena o clerkUserId.
+    // Se uploadedByUserId fosse uma FK para users.id serial, aí sim precisaria.
+    // Assumindo que contracts.uploadedByUserId armazena o clerkUserId.
 
-    let queryFilters = [];
-    // Adicionar filtro por usuário é uma boa prática, a menos que seja um admin vendo todos
-    // queryFilters.push(eq(contracts.uploadedByUserId, clerkUserId)); // Filtrar por quem fez o upload
+    const queryConditions = [eq(contracts.uploadedByUserId, clerkUserId)]; // Sempre filtra pelo usuário logado
 
     if (eventIdParam) {
       const eventId = parseInt(eventIdParam, 10);
       if (!isNaN(eventId)) {
-        queryFilters.push(eq(contracts.eventId, eventId));
+        queryConditions.push(eq(contracts.eventId, eventId));
+      } else {
+        // Se eventIdParam for fornecido mas inválido, pode retornar erro ou ignorar o filtro.
+        // Por ora, vamos ignorar um eventId inválido se ele for o único filtro adicional.
+        // Se fosse um filtro mandatório, deveria retornar 400.
       }
     }
 
     const allContracts = await db
       .select()
       .from(contracts)
-      .where(queryFilters.length > 0 ? eq(contracts.uploadedByUserId, clerkUserId) : undefined) // Exemplo: só mostra contratos do usuário logado
-      // .where(queryFilters.length > 0 ? and(...queryFilters) : undefined) // Se for usar múltiplos filtros
+      .where(and(...queryConditions)) // Usa and() para combinar todas as condições
       .orderBy(contracts.createdAt);
 
     return NextResponse.json({ contracts: allContracts }, { status: 200 });

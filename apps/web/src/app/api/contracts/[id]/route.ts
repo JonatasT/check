@@ -5,7 +5,7 @@ import { contracts } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 
 const BASE_UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
@@ -17,7 +17,7 @@ interface RouteContext {
 
 // DELETE: Excluir um contrato/documento
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
 
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado. Faça login para excluir contratos.' }, { status: 401 });

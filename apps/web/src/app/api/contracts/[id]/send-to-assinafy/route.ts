@@ -5,11 +5,11 @@ import { contracts } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { getAuth } from '@clerk/nextjs/server';
-import FormData from 'form-data'; // Para construir o corpo multipart/form-data
-import fetch from 'node-fetch'; // Para fazer a requisição HTTP, pois o fetch nativo do Next.js pode ter nuances com FormData em Route Handlers
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
+import FormData from 'form-data';
+import fetch from 'node-fetch';
 
-const BASE_UPLOAD_DIR = path.join(process.cwd(), 'uploads'); // Onde nossos arquivos estão localmente
+const BASE_UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
 interface RouteContext {
   params: {

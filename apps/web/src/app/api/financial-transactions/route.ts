@@ -2,9 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { financialTransactions, events } from '@/lib/db/schema';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, desc } from 'drizzle-orm'; // Adicionado desc
 
 // Schema de validação para novas transações
 const transactionSchema = z.object({
@@ -21,7 +21,7 @@ const transactionSchema = z.object({
 
 // GET: Listar transações financeiras (com filtro por eventId)
 export async function GET(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
 
 // POST: Criar uma nova transação financeira
 export async function POST(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }

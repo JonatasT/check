@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contracts } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
-import fetch from 'node-fetch'; // Usaremos node-fetch para chamadas à API externa
+import fetch from 'node-fetch';
 
 interface RouteContext {
   params: {
@@ -36,7 +36,7 @@ interface AssinafyError {
 }
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
 
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
