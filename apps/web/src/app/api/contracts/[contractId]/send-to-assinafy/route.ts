@@ -1,11 +1,11 @@
-// apps/web/src/app/api/contracts/[id]/send-to-assinafy/route.ts
+// apps/web/src/app/api/contracts/[contractId]/send-to-assinafy/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contracts } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { auth } from '@clerk/nextjs/server'; // Alterado para auth
+import { auth } from '@clerk/nextjs/server';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
 
@@ -13,19 +13,19 @@ const BASE_UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
 interface RouteContext {
   params: {
-    id: string; // Nosso ID interno do contrato
+    contractId: string; // Alterado de id para contractId
   };
 }
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth();
 
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
 
-  const contractId = parseInt(params.id, 10);
-  if (isNaN(contractId)) {
+  const contractIdNum = parseInt(params.contractId, 10); // Alterado de params.id para params.contractId
+  if (isNaN(contractIdNum)) {
     return NextResponse.json({ error: 'ID do contrato inválido.' }, { status: 400 });
   }
 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const [contractDetails] = await db
       .select()
       .from(contracts)
-      .where(eq(contracts.id, contractId))
+      .where(eq(contracts.id, contractIdNum)) // Usar contractIdNum aqui
       .limit(1);
 
     if (!contractDetails) {
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         status: 'pending_signature_setup', // Novo status interno indicando que está no Assinafy, aguardando configuração de signatários
         updatedAt: new Date(),
       })
-      .where(eq(contracts.id, contractId));
+      .where(eq(contracts.id, contractIdNum)); // Usar contractIdNum aqui
 
     return NextResponse.json({
       message: 'Documento enviado com sucesso para o Assinafy!',
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }, { status: 200 });
 
   } catch (error) {
-    console.error(`Erro ao processar envio para Assinafy do contrato ID ${contractId}:`, error);
+    console.error(`Erro ao processar envio para Assinafy do contrato ID ${contractIdNum}:`, error); // Usar contractIdNum
     // @ts-ignore
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     return NextResponse.json({ error: `Erro interno do servidor: ${errorMessage}` }, { status: 500 });
