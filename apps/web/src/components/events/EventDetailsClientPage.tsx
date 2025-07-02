@@ -40,6 +40,8 @@ interface EventData {
   date: string; // ISO string
   location: string | null;
   organizerName?: string | null;
+  eventType?: string | null; // Adicionado
+  eventSize?: string | null;   // Adicionado
 }
 
 interface FinancialTransaction {
@@ -119,6 +121,10 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
   const [supplierContractDetails, setSupplierContractDetails] = useState('');
   const [isAddingSupplierToEvent, setIsAddingSupplierToEvent] = useState(false);
 
+  // Estado para sugestões de fornecedores
+  const [supplierSuggestions, setSupplierSuggestions] = useState<SupplierSuggestion[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
 
   const fetchEventDetails = useCallback(async () => {
     setIsLoading(true);
@@ -147,18 +153,52 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
   useEffect(() => {
     if (eventId) {
       fetchEventDetails();
+      // A busca de sugestões agora é disparada pelo useEffect abaixo, quando eventDetails é populado/atualizado.
     }
   }, [eventId, fetchEventDetails]);
 
+  // useEffect para buscar sugestões quando eventType ou eventSize do evento carregado mudarem
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (eventDetails?.event?.eventType && eventDetails?.event?.eventSize) {
+        setIsLoadingSuggestions(true);
+        try {
+          const response = await fetch(`/api/events/${eventId}/supplier-suggestions`);
+          if (!response.ok) {
+            // Não tratar como erro fatal se não houver sugestões ou falhar a busca
+            console.warn('Falha ao buscar sugestões de fornecedores:', response.statusText);
+            setSupplierSuggestions([]); // Limpa sugestões em caso de falha na API
+            return;
+          }
+          const data = await response.json();
+          setSupplierSuggestions(data.suggestions || []);
+        } catch (err) {
+          console.warn('Erro de rede ou parsing ao buscar sugestões de fornecedores:', err);
+          setSupplierSuggestions([]); // Limpa sugestões em caso de erro de fetch
+        } finally {
+          setIsLoadingSuggestions(false);
+        }
+      } else {
+        // Se eventType ou eventSize não estiverem definidos no evento carregado, limpa as sugestões.
+        setSupplierSuggestions([]);
+      }
+    };
+
+    if (eventDetails && eventDetails.event) { // Só busca sugestões se os detalhes do evento já foram carregados
+        fetchSuggestions();
+    }
+  }, [eventId, eventDetails]); // Depende de eventDetails para ter eventType e eventSize
+
+
   const fetchAvailableSuppliers = async () => {
     try {
-      const response = await fetch('/api/suppliers?limit=1000'); // Ajustar limite ou implementar busca
+      const response = await fetch('/api/suppliers?limit=1000');
       if (!response.ok) throw new Error('Falha ao buscar fornecedores disponíveis');
       const data = await response.json();
       setAvailableSuppliers(data.suppliers.map((s: any) => ({ id: s.id, name: s.name })) || []);
     } catch (err: any) {
       toast({ title: "Erro ao buscar fornecedores", description: err.message, variant: "destructive" });
-      setAvailableSuppliers([]); // Garante que está vazio em caso de erro
+      setAvailableSuppliers([]);
     }
   };
 
@@ -310,10 +350,12 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
           <CardTitle className="text-3xl">{event.name}</CardTitle>
           {event.description && <CardDescription>{event.description}</CardDescription>}
         </CardHeader>
-        <CardContent className="grid md:grid-cols-2 gap-4">
+        <CardContent className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div><span className="font-semibold">Data:</span> {dayjs(event.date).locale('pt-br').format('DD/MM/YYYY HH:mm')}</div>
           <div><span className="font-semibold">Local:</span> {event.location || 'N/A'}</div>
           <div><span className="font-semibold">Organizador:</span> {event.organizerName || 'N/A'}</div>
+          <div><span className="font-semibold">Tipo de Evento:</span> {event.eventType || 'N/A'}</div>
+          <div><span className="font-semibold">Tamanho Estimado:</span> {event.eventSize || 'N/A'}</div>
         </CardContent>
       </Card>
 
@@ -447,7 +489,7 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
                         <DialogTrigger asChild>
                             <Button onClick={handleOpenAddSupplierModal}><LinkIcon className="mr-2 h-4 w-4" /> Associar Fornecedor</Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-md">
+                        <DialogContent className="sm:max-w-lg"> {/* Aumentar um pouco o modal */}
                             <DialogHeader>
                                 <DialogTitle>Associar Fornecedor ao Evento</DialogTitle>
                             </DialogHeader>
@@ -485,6 +527,29 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
                     </Dialog>
                 </CardHeader>
                 <CardContent>
+                    {/* Seção de Sugestões */}
+                    {isLoadingSuggestions && <p className="text-sm text-muted-foreground mb-4">Carregando sugestões...</p>}
+                    {!isLoadingSuggestions && supplierSuggestions && supplierSuggestions.length > 0 && (
+                        <div className="mb-6 p-4 border rounded-lg bg-blue-50 border-blue-200">
+                            <h5 className="text-md font-semibold mb-2 text-blue-700">Sugestões de Fornecedores:</h5>
+                            <ul className="list-disc pl-5 space-y-1 text-sm">
+                                {supplierSuggestions.map((suggestion, index) => (
+                                    <li key={index}>
+                                        <span className="font-medium">{suggestion.categoryName}:</span> {suggestion.suggestedQuantity}
+                                        {suggestion.notes && <span className="text-xs text-gray-600 italic ml-1">({suggestion.notes})</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {!isLoadingSuggestions && eventDetails?.event && (!eventDetails.event.eventType || !eventDetails.event.eventSize) && (
+                         <p className="text-sm text-muted-foreground mb-4">Defina o Tipo e Tamanho do evento para ver sugestões de fornecedores.</p>
+                    )}
+                     {!isLoadingSuggestions && eventDetails?.event && eventDetails.event.eventType && eventDetails.event.eventSize && supplierSuggestions.length === 0 && (
+                         <p className="text-sm text-muted-foreground mb-4">Nenhuma sugestão específica encontrada para este tipo/tamanho de evento.</p>
+                    )}
+
+                    <h4 className="text-md font-semibold mb-3">Fornecedores Associados:</h4>
                     {associatedSuppliers && associatedSuppliers.length > 0 ? (
                         <div className="rounded-md border">
                             <Table>

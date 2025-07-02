@@ -227,17 +227,31 @@ export default function ContractsClientPage() {
   const getContractDisplayStatus = (contract: Contract): string => {
     // Prioriza o status do Assinafy se disponível e relevante
     if (contract.assinafyDocumentId) {
-      if (contract.assinafyStatus === 'certificated') return 'Concluído (Assinado via Assinafy)';
-      if (contract.assinafyStatus === 'pending_signature') return 'Aguardando Assinaturas (Assinafy)';
+      // Status finais do Assinafy
+      if (contract.assinafyStatus === 'certificated') return 'Assinado (Assinafy)';
       if (contract.assinafyStatus === 'rejected_by_signer') return 'Rejeitado pelo Signatário (Assinafy)';
       if (contract.assinafyStatus === 'failed') return 'Falha no Processo (Assinafy)';
-      if (contract.assinafyStatus === 'uploaded' || contract.assinafyStatus === 'metadata_ready') return 'Pronto para Coleta de Assinaturas (Assinafy)';
-      // Outros status do Assinafy podem ser mapeados aqui
+      if (contract.assinafyStatus === 'expired') return 'Expirado (Assinafy)';
+      if (contract.assinafyStatus === 'cancelled' || contract.assinafyStatus === 'rejected_by_user') return 'Cancelado (Assinafy)';
+
+      // Status intermediários do Assinafy
+      if (contract.assinafyStatus === 'pending_signature') return 'Aguardando Assinaturas (Assinafy)';
+      if (contract.assinafyStatus === 'certificating') return 'Certificando Documento (Assinafy)';
+
+      // Status iniciais após envio para Assinafy
+      if (contract.assinafyStatus === 'uploaded' || contract.assinafyStatus === 'metadata_ready' || contract.assinafyStatus === 'document_prepared') {
+        return 'Pronto para Coleta de Assinaturas (Assinafy)';
+      }
+      // Fallback para mostrar o status exato do Assinafy se não mapeado acima
       if (contract.assinafyStatus) return `Assinafy: ${contract.assinafyStatus}`;
     }
-    // Fallback para o status interno do nosso sistema
+
+    // Fallback para o status interno do nosso sistema se não estiver no Assinafy ainda
     if (contract.status === 'uploaded') return 'Aguardando Envio para Assinatura';
-    if (contract.status === 'pending_signature_setup') return 'Pronto para Coleta de Assinaturas (Assinafy)';
+    // Este status interno é usado entre o envio para Assinafy e a configuração dos signatários
+    if (contract.status === 'pending_signature_setup') return 'Pronto para Coleta de Assinaturas';
+    if (contract.status === 'pending_assinaturas') return 'Aguardando Assinaturas (nosso sistema)'; // Status nosso após iniciar o processo no Assinafy
+    if (contract.status === 'signed') return 'Assinado (nosso sistema)'; // Se tivéssemos um status final nosso
     if (contract.status === 'error_sending_to_provider') return 'Erro ao Enviar para Assinafy';
 
     return contract.status || 'N/A';
@@ -441,8 +455,19 @@ export default function ContractsClientPage() {
                           // Ex: window.open(contract.assinafyCertificatedUrl, '_blank'); // Se for URL pública direta
                         }}
                         title="Baixar Documento Assinado (Assinafy)"
+                        onClick={() => {
+                          if (contract.assinafyCertificatedUrl) {
+                            // Se for uma URL direta do Assinafy, pode-se abrir diretamente.
+                            // window.open(contract.assinafyCertificatedUrl, '_blank');
+                            // Ou, se for um caminho/identificador para ser baixado via nossa API:
+                            // handleDownload(contract.assinafyCertificatedUrl, `contrato_${contract.id}_assinado.pdf`);
+                            toast({ title: "Download Certificado", description: `Implementar download de: ${contract.assinafyCertificatedUrl}`});
+                          } else {
+                            toast({ title: "URL não disponível", description: "A URL do documento certificado não está disponível.", variant: "destructive"});
+                          }
+                        }}
                       >
-                        <DownloadIcon className="h-4 w-4" /> {/* Pode usar um ícone de "check" ou "verified" aqui */}
+                        <DownloadIcon className="h-4 w-4" /> {/* Considerar ícone de "verificado" ou "assinado" */}
                       </Button>
                     )}
 
