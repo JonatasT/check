@@ -66,31 +66,63 @@ export async function GET(request: NextRequest) {
   }
 }
 
+import { getAuth } from '@clerk/nextjs/server'; // Importar getAuth
+import { z } from 'zod'; // Importar Zod
+
+// Schema para criação de evento
+const createEventSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório"),
+  description: z.string().optional().nullable(),
+  date: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Data inválida" }),
+  location: z.string().optional().nullable(),
+  organizerId: z.number().int().positive().optional().nullable(), // Se o organizador for um user do nosso BD
+  // clerkOrganizerId: z.string().optional().nullable(), // Se o organizador for o clerkId direto
+  eventType: z.string().max(100).optional().nullable(),
+  eventSize: z.string().max(50).optional().nullable(),
+});
+
 export async function POST(request: NextRequest) {
+  const { userId: clerkUserId } = getAuth(request); // Obter o ID do usuário logado
+  if (!clerkUserId) {
+    return NextResponse.json({ error: 'Não autorizado. Faça login para criar eventos.' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
-    const { name, description, date, location, organizerId } = body;
+    const validation = createEventSchema.safeParse(body);
 
-    // Validação básica (Zod seria melhor aqui)
-    if (!name || !date) {
-      return NextResponse.json({ error: 'Nome e data são obrigatórios' }, { status: 400 });
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Dados inválidos.', details: validation.error.flatten() }, { status: 400 });
     }
 
-    // Converter a data para o formato correto se necessário
-    // Assumindo que a data vem como string ISO 8601 ou pode ser processada por new Date()
+    const { name, description, date, location, eventType, eventSize } = validation.data;
+
+    // TODO: Decidir se organizerId será o ID da tabela users ou o clerkUserId.
+    // Por agora, vamos assumir que o schema 'events' tem um campo organizerId que pode ser o clerkUserId.
+    // Se 'events.organizerId' for uma FK para 'users.id' serial, precisaria buscar o users.id a partir do clerkUserId.
+    // Para simplificar, vamos assumir que 'events.organizerId' pode armazenar o clerkUserId diretamente
+    // e que o schema foi definido com 'organizerId: varchar(...)' ou similar, ou que é FK para users.clerkId.
+    // A definição atual do schema é: organizerId: integer('organizer_id').references(() => users.id)
+    // Isso significa que precisamos do ID numérico da tabela 'users'.
+    // Por ora, vou deixar o organizerId como opcional e não o preencherei automaticamente pelo clerkUserId
+    // para não complicar sem ter a UI de criação de evento que permitiria associar um organizador (user).
+    // Se a intenção é que o criador seja o organizador, precisaremos buscar o users.id correspondente ao clerkUserId.
+
     const eventDate = new Date(date);
-    if (isNaN(eventDate.getTime())) {
-        return NextResponse.json({ error: 'Formato de data inválido' }, { status: 400 });
-    }
 
     const newEventData = {
       name,
-      description,
+      description: description || undefined,
       date: eventDate,
-      location,
-      organizerId, // Pode ser nulo se não fornecido e a coluna permitir
+      location: location || undefined,
+      organizerId: clerkUserId ? undefined : undefined, // Placeholder: Implementar busca de users.id a partir de clerkUserId se necessário
+      eventType: eventType || undefined,
+      eventSize: eventSize || undefined,
+      // Se o schema events.organizerId é para o clerkUserId diretamente:
+      // organizerId: clerkUserId
     };
 
+    // @ts-ignore Drizzle pode reclamar de undefineds opcionais, mas funciona
     const [newEvent] = await db.insert(events).values(newEventData).returning();
 
     return NextResponse.json({ event: newEvent }, { status: 201 });

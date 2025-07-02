@@ -19,6 +19,8 @@ export const events = pgTable('events', {
   date: timestamp('date').notNull(),
   location: varchar('location', { length: 255 }),
   organizerId: integer('organizer_id').references(() => users.id), // Chave estrangeira para users
+  eventType: varchar('event_type', { length: 100 }), // Ex: Casamento, Corporativo, Show, Aniversário
+  eventSize: varchar('event_size', { length: 50 }), // Ex: Pequeno, Médio, Grande (ou Estimativa de público como string/int)
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
