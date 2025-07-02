@@ -119,9 +119,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   }
 }
 
-import { z } from 'zod'; // Importar Zod
-
 // Schema para atualização de evento (todos os campos são opcionais)
+// import { z } from 'zod'; // Zod já foi importado no topo do arquivo
 const updateEventSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").optional(),
   description: z.string().nullable().optional(),
