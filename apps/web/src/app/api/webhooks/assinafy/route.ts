@@ -4,118 +4,202 @@ import { db } from '@/lib/db';
 import { contracts } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-// TODO: Implementar verificação de assinatura do webhook para segurança, se fornecido pelo Assinafy.
+import crypto from 'crypto';
+
+// TODO: Armazenar este segredo de forma segura nas variáveis de ambiente.
 // const ASSINAFY_WEBHOOK_SECRET = process.env.ASSINAFY_WEBHOOK_SECRET;
 
+// Interfaces para tipar o payload esperado do Assinafy (AJUSTAR CONFORME DOCUMENTAÇÃO REAL)
+interface AssinafyWebhookPayload {
+  event?: string; // Ex: "document_status_changed", "signature_completed"
+  event_type?: string; // Alternativa comum para nome do campo
+  type?: string; // Outra alternativa
+  data?: AssinafyDocumentDataContainer;
+  document?: AssinafyDocumentData; // Se os dados do documento vierem na raiz
+  // Adicionar outros campos que o Assinafy possa enviar no nível raiz do payload
+}
+
+interface AssinafyDocumentDataContainer {
+  document?: AssinafyDocumentData;
+  // Outros possíveis containers de dados
+}
+
+interface AssinafyDocumentData {
+  id?: string; // ID do documento no Assinafy
+  document_id?: string; // Alternativa para ID do documento
+  status?: string; // Status do documento no Assinafy (ex: "pending_signature", "certificated", "rejected")
+  current_status?: string; // Alternativa
+  artifacts?: {
+    original?: string;
+    certificated?: string; // URL para o documento certificado/assinado
+    // Outros artefatos
+  };
+  download_urls?: { // Alternativa comum para artefatos
+    original?: string;
+    certificated?: string;
+  };
+  // Adicionar outros campos relevantes do documento (signatários, datas, etc.)
+}
+
+
 export async function POST(request: NextRequest) {
-  console.log("Assinafy Webhook: Recebida uma nova requisição.");
+  const webhookTimestamp = request.headers.get('X-Assinafy-Timestamp'); // Exemplo de header de timestamp
+  const webhookSignature = request.headers.get('X-Assinafy-Signature'); // Exemplo de header de assinatura
+
+  // Log Raw Body para depuração inicial de assinatura, se necessário
+  // const rawBody = await request.text(); // Ler como texto primeiro para verificação de assinatura
+  // console.log("Assinafy Webhook: Raw Body:", rawBody);
+  // request.json() não poderá ser chamado depois de request.text() ou request.arrayBuffer()
+  // Para verificar assinatura, você precisaria do corpo raw (texto ou buffer)
+
+  // TODO: Implementar verificação de assinatura do webhook
+  // if (ASSINAFY_WEBHOOK_SECRET && webhookSignature && webhookTimestamp) {
+  //   const signedPayload = webhookTimestamp + '.' + rawBody; // Ou como o Assinafy especificar
+  //   const expectedSignature = crypto
+  //     .createHmac('sha256', ASSINAFY_WEBHOOK_SECRET)
+  //     .update(signedPayload)
+  //     .digest('hex');
+  //   if (!crypto.timingSafeEqual(Buffer.from(webhookSignature), Buffer.from(expectedSignature))) {
+  //     console.warn('Assinafy Webhook: Assinatura inválida.');
+  //     return NextResponse.json({ error: 'Assinatura inválida.' }, { status: 403 });
+  //   }
+  //   console.log("Assinafy Webhook: Assinatura verificada com sucesso.");
+  // } else {
+  //   console.warn("Assinafy Webhook: Verificação de assinatura não configurada ou headers ausentes.");
+  //   // Em produção, você pode querer rejeitar webhooks não assinados se um segredo estiver configurado.
+  // }
+
+  let payload: AssinafyWebhookPayload;
+  try {
+    // Se já leu como rawBody, precisa fazer JSON.parse(rawBody)
+    payload = await request.json();
+    console.log("Assinafy Webhook: Payload Recebido:", JSON.stringify(payload, null, 2));
+  } catch (e) {
+    console.error("Assinafy Webhook: Erro ao fazer parse do JSON do payload.", e);
+    return NextResponse.json({ error: 'Payload JSON inválido.' }, { status: 400 });
+  }
+
+  // Extração mais robusta do tipo de evento e dados do documento
+  const eventType = payload.event || payload.event_type || payload.type;
+  const documentDataContainer = payload.data || payload; // Se 'document' estiver na raiz ou dentro de 'data'
+  const documentInfo = documentDataContainer?.document || (documentDataContainer as AssinafyDocumentData); // Ajuste conforme a estrutura real
+
+  if (!eventType || !documentInfo) {
+    console.error("Assinafy Webhook: 'eventType' ou 'documentInfo' não encontrados no payload normalizado.");
+    return NextResponse.json({ error: 'Estrutura de payload desconhecida ou incompleta.' }, { status: 400 });
+  }
+
+  const assinafyDocumentId = documentInfo.id || documentInfo.document_id;
+  const assinafyCurrentStatus = documentInfo.status || documentInfo.current_status;
+
+  if (!assinafyDocumentId) {
+    console.error("Assinafy Webhook: ID do documento do Assinafy não encontrado no payload do documento.");
+    return NextResponse.json({ error: 'ID do documento do Assinafy ausente nos dados do documento.' }, { status: 400 });
+  }
 
   try {
-    const payload = await request.json();
-    console.log("Assinafy Webhook Payload:", JSON.stringify(payload, null, 2));
-
-    // =====================================================================================
-    // ATENÇÃO: A lógica abaixo é um PLACEHOLDER e precisa ser adaptada
-    // com base na estrutura REAL do payload do webhook do Assinafy.
-    // Verifique a documentação do Assinafy para os campos corretos.
-    // =====================================================================================
-
-    // Exemplo de como você poderia extrair dados (AJUSTE CONFORME NECESSÁRIO)
-    const eventType = payload.event?.type || payload.event_type || payload.type; // Tente adivinhar o campo do tipo de evento
-    const documentData = payload.data?.document || payload.document || payload.data; // Tente adivinhar onde estão os dados do documento
-
-    if (!eventType || !documentData) {
-      console.error("Assinafy Webhook: Tipo de evento ou dados do documento não encontrados no payload.");
-      return NextResponse.json({ error: 'Payload inválido ou desconhecido.' }, { status: 400 });
-    }
-
-    const assinafyDocumentId = documentData.id || documentData.document_id; // ID do documento no Assinafy
-
-    if (!assinafyDocumentId) {
-      console.error("Assinafy Webhook: ID do documento do Assinafy não encontrado no payload.");
-      return NextResponse.json({ error: 'ID do documento do Assinafy ausente.' }, { status: 400 });
-    }
-
-    // Buscar o contrato em nosso banco de dados
     const [contractToUpdate] = await db
-      .select({ id: contracts.id })
+      .select({ id: contracts.id, currentAssinafyStatus: contracts.assinafyStatus })
       .from(contracts)
       .where(eq(contracts.assinafyDocumentId, assinafyDocumentId))
       .limit(1);
 
     if (!contractToUpdate) {
-      console.warn(`Assinafy Webhook: Contrato com assinafyDocumentId ${assinafyDocumentId} não encontrado em nosso BD.`);
-      // Retornar 200 para o Assinafy para evitar reenvios, mas logar o aviso.
-      return NextResponse.json({ message: 'Contrato não encontrado, mas webhook recebido.' }, { status: 200 });
+      console.warn(`Assinafy Webhook: Contrato com assinafyDocumentId ${assinafyDocumentId} não encontrado em nosso BD. Evento: ${eventType}`);
+      return NextResponse.json({ message: 'Contrato não encontrado, webhook ignorado.' }, { status: 200 });
     }
 
-    let newAssinafyStatus: string | undefined = undefined;
-    let newOurStatus: string | undefined = undefined;
-    let assinafyCertificatedUrl: string | undefined = undefined;
+    // Prepara os dados para atualização
+    const updateData: Partial<typeof contracts.$inferInsert> = { updatedAt: new Date() };
 
-    // Mapear eventos do Assinafy para nossos status (EXEMPLO - AJUSTE!)
-    switch (eventType) {
-      case 'document_signed': // Supondo que este é um evento quando UM signatário assina
-      case 'signer_signed_document':
-        newAssinafyStatus = 'pending_signature'; // Pode ainda estar pendente de outros
-        newOurStatus = 'pending_assinaturas';
-        // Se o payload indicar que TODAS as assinaturas foram coletadas, mude para 'certificating' ou 'document_ready'
-        // Verifique se o payload do Assinafy indica se o processo foi concluído.
-        // Ex: if (documentData.status === 'completed' || documentData.all_signed === true) {
-        //   newAssinafyStatus = 'certificated'; // ou 'certificating'
-        //   newOurStatus = 'signed';
-        //   assinafyCertificatedUrl = documentData.artifacts?.certificated || documentData.download_links?.certificated;
-        // }
-        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} assinado por um signatário (ou status similar).`);
+    if (assinafyCurrentStatus) {
+        updateData.assinafyStatus = assinafyCurrentStatus;
+    }
+
+    // Mapeamento de evento para status interno e URL do certificado
+    // ESTE MAPEAMENTO É UM EXEMPLO E PRECISA SER VALIDADO COM OS EVENTOS REAIS DO ASSINAFY
+    switch (eventType.toLowerCase()) {
+      case 'document_viewed_by_signer': // Se houver tal evento
+        // Apenas atualiza o assinafyStatus se ele for diferente e mais recente
+        if (assinafyCurrentStatus && contractToUpdate.currentAssinafyStatus !== assinafyCurrentStatus) {
+             updateData.assinafyStatus = assinafyCurrentStatus; // Ex: 'viewed'
+        }
+        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} visualizado. Status Assinafy: ${assinafyCurrentStatus}`);
         break;
 
-      case 'document_ready': // Supondo que este é o evento quando TODAS as assinaturas foram feitas e o doc está pronto/certificado
+      case 'signer_signed_document': // Um signatário assinou
+      case 'document_signed': // Pode ser sinônimo ou evento diferente
+        updateData.assinafyStatus = assinafyCurrentStatus || 'pending_signature'; // O status do payload pode já ser 'pending_signature' ou 'partially_signed'
+        updateData.status = 'pending_assinaturas'; // Nosso status interno
+        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} assinado por um signatário. Status Assinafy: ${assinafyCurrentStatus}`);
+        break;
+
+      case 'document_ready':
       case 'process_completed':
-      case 'document_certificated':
-        newAssinafyStatus = 'certificated';
-        newOurStatus = 'signed';
-        assinafyCertificatedUrl = documentData.artifacts?.certificated || documentData.download_url_certificated || documentData.url_certificated;
-        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} certificado/pronto. URL: ${assinafyCertificatedUrl}`);
+      case 'document_certificated': // Documento finalizado e certificado
+        updateData.assinafyStatus = assinafyCurrentStatus || 'certificated';
+        updateData.status = 'signed'; // Nosso status interno para finalizado
+        updateData.signedAt = new Date(); // Marcar data da assinatura/conclusão
+        const certUrl = documentInfo.artifacts?.certificated || documentInfo.download_urls?.certificated;
+        if (certUrl) {
+          updateData.assinafyCertificatedUrl = certUrl;
+        }
+        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} concluído/certificado. URL: ${certUrl}`);
         break;
 
       case 'document_rejected':
-      case 'signer_rejected_document':
-        newAssinafyStatus = 'rejected_by_signer';
-        newOurStatus = 'rejected';
-        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} rejeitado.`);
+      case 'signer_rejected_document': // Um signatário rejeitou
+        updateData.assinafyStatus = assinafyCurrentStatus || 'rejected_by_signer';
+        updateData.status = 'rejected';
+        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} rejeitado. Status Assinafy: ${assinafyCurrentStatus}`);
         break;
 
       case 'document_expired':
-        newAssinafyStatus = 'expired';
-        newOurStatus = 'expired';
-        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} expirado.`);
+        updateData.assinafyStatus = assinafyCurrentStatus || 'expired';
+        updateData.status = 'expired';
+        console.log(`Assinafy Webhook: Documento ${assinafyDocumentId} expirado. Status Assinafy: ${assinafyCurrentStatus}`);
         break;
 
-      // Adicione outros casos conforme a documentação do Assinafy (ex: 'document_cancelled', 'failed', etc.)
+      case 'document_cancelled': // Se o processo foi cancelado pelo remetente no Assinafy
+      case 'rejected_by_user': // Nome alternativo
+        updateData.assinafyStatus = assinafyCurrentStatus || 'cancelled';
+        updateData.status = 'cancelled';
+        console.log(`Assinafy Webhook: Processo do documento ${assinafyDocumentId} cancelado. Status Assinafy: ${assinafyCurrentStatus}`);
+        break;
+
+      case 'document_processing_failed': // Se houve falha no processamento pelo Assinafy
+      case 'failed':
+        updateData.assinafyStatus = assinafyCurrentStatus || 'failed';
+        updateData.status = 'error_signature_provider'; // Nosso status interno
+        console.log(`Assinafy Webhook: Falha no processamento do documento ${assinafyDocumentId}. Status Assinafy: ${assinafyCurrentStatus}`);
+        break;
+
       default:
-        console.warn(`Assinafy Webhook: Evento não tratado '${eventType}' para o documento ${assinafyDocumentId}.`);
-        // Retornar 200 para não ficar recebendo reenvios de eventos não mapeados.
-        return NextResponse.json({ message: 'Evento não mapeado recebido.' }, { status: 200 });
+        console.warn(`Assinafy Webhook: Evento não explicitamente tratado '${eventType}' para o documento ${assinafyDocumentId}. Status Assinafy no payload: ${assinafyCurrentStatus}. Verifique se um update de status genérico é necessário.`);
+        // Se o status do Assinafy no payload for válido e diferente do atual, atualizamos.
+        if (assinafyCurrentStatus && assinafyCurrentStatus !== contractToUpdate.currentAssinafyStatus) {
+            // Não mudar nosso status interno 'status' a menos que o evento seja especificamente mapeado para isso.
+        } else {
+            // Nenhum status novo ou nenhuma mudança, não faz update desnecessário
+            return NextResponse.json({ message: 'Evento recebido, sem alteração de status necessária ou evento não mapeado para alteração de status interno.' }, { status: 200 });
+        }
     }
 
-    // Atualizar o contrato no nosso banco de dados
-    const updateData: Partial<typeof contracts.$inferInsert> = { updatedAt: new Date() };
-    if (newAssinafyStatus) updateData.assinafyStatus = newAssinafyStatus;
-    if (newOurStatus) updateData.status = newOurStatus;
-    if (assinafyCertificatedUrl) updateData.assinafyCertificatedUrl = assinafyCertificatedUrl;
-
-    if (Object.keys(updateData).length > 1) { // Se houver algo além de updatedAt para atualizar
+    if (Object.keys(updateData).length > 1) {
       await db
         .update(contracts)
         .set(updateData)
         .where(eq(contracts.id, contractToUpdate.id));
-      console.log(`Assinafy Webhook: Contrato ID ${contractToUpdate.id} atualizado com base no evento '${eventType}'.`);
+      console.log(`Assinafy Webhook: Contrato ID ${contractToUpdate.id} (Assinafy ID: ${assinafyDocumentId}) atualizado devido ao evento '${eventType}'. Novo status Assinafy: ${updateData.assinafyStatus}, Novo status interno: ${updateData.status}`);
+    } else {
+      console.log(`Assinafy Webhook: Evento '${eventType}' para o contrato ID ${contractToUpdate.id} não resultou em alterações de dados.`);
     }
 
-    return NextResponse.json({ message: 'Webhook recebido e processado com sucesso.' }, { status: 200 });
+    return NextResponse.json({ message: 'Webhook processado.' }, { status: 200 });
 
   } catch (error: any) {
-    console.error('Assinafy Webhook - Erro ao processar requisição:', error);
+    console.error('Assinafy Webhook - Erro CRÍTICO ao processar requisição:', error);
+    // É importante retornar 500 aqui para que o Assinafy saiba que algo deu errado e possa tentar reenviar.
     return NextResponse.json({ error: `Erro interno do servidor: ${error.message}` }, { status: 500 });
   }
 }

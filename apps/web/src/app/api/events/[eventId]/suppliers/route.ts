@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { eventSuppliers, suppliers, events } from '@/lib/db/schema';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
 import { and, eq, desc } from 'drizzle-orm';
 
@@ -20,7 +20,7 @@ const addEventSupplierSchema = z.object({
 
 // GET: Listar fornecedores de um evento específico
 export async function GET(request: NextRequest, { params }: EventSuppliersRouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest, { params }: EventSuppliersRouteC
 
 // POST: Associar um fornecedor a um evento
 export async function POST(request: NextRequest, { params }: EventSuppliersRouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }

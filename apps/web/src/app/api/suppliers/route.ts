@@ -2,9 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { suppliers, supplierCategories } from '@/lib/db/schema';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
-import { asc, desc, eq, ilike, or, and } from 'drizzle-orm';
+import { asc, desc, eq, ilike, or, and, sql } from 'drizzle-orm'; // Adicionado sql
 
 const supplierSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(255),
@@ -17,7 +17,7 @@ const supplierSchema = z.object({
 
 // GET: Listar todos os fornecedores (com filtros e paginação)
 export async function GET(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 
 // POST: Criar um novo fornecedor
 export async function POST(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   // Adicionar verificação de role/permissão se necessário
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });

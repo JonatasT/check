@@ -2,9 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { suppliers, supplierCategories, eventSuppliers } from '@/lib/db/schema';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
-import { eq, count, and } from 'drizzle-orm';
+import { eq, count, and, ne } from 'drizzle-orm'; // Adicionado ne
 
 interface RouteContext {
   params: {
@@ -23,7 +23,7 @@ const supplierUpdateSchema = z.object({
 
 // GET: Buscar um fornecedor específico
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
 // PUT: Atualizar um fornecedor
 export async function PUT(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   // Adicionar verificação de role/permissão se necessário
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
@@ -89,76 +89,45 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Nenhum dado fornecido para atualização.' }, { status: 400 });
     }
 
-    // Se email for fornecido e estiver sendo alterado, verificar se já existe
+    // Se email for fornecido e estiver sendo alterado, verificar se já existe em OUTRO fornecedor
     if (dataToUpdate.email) {
       const [existingSupplierByEmail] = await db
-        .select()
+        .select({ id: suppliers.id })
         .from(suppliers)
-        .where(and(eq(suppliers.email, dataToUpdate.email), eq(suppliers.id, supplierIdNum))) // Correção: ne(suppliers.id, supplierIdNum)
+        .where(and(
+          eq(suppliers.email, dataToUpdate.email),
+          ne(suppliers.id, supplierIdNum) // Garante que não estamos comparando o fornecedor com ele mesmo
+        ))
         .limit(1);
 
-      // Correção da lógica:
-      // Deve buscar por email E id diferente do atual
-      const [conflictingSupplier] = await db
-        .select({id: suppliers.id})
-        .from(suppliers)
-        .where(and(eq(suppliers.email, dataToUpdate.email), eq(suppliers.id, supplierIdNum) ? undefined : eq(suppliers.id, suppliers.id) /*dummy to ensure AND*/ )) // this is wrong
-        .limit(1);
-
-      // Lógica correta para checar conflito de email:
-      const [emailConflict] = await db.select({id: suppliers.id})
-                                   .from(suppliers)
-                                   .where(and(eq(suppliers.email, dataToUpdate.email), eq(suppliers.id, supplierIdNum) ? undefined : eq(suppliers.id, suppliers.id))) // Ainda incorreto
-                                   .limit(1);
-
-      // Lógica correta para checar conflito de e-mail:
-      if (dataToUpdate.email) {
-        const conflictingSuppliers = await db
-            .select({ id: suppliers.id })
-            .from(suppliers)
-            .where(eq(suppliers.email, dataToUpdate.email));
-
-        // Se encontrou algum fornecedor com o mesmo email, e este não é o próprio fornecedor sendo atualizado
-        if (conflictingSuppliers.length > 0 && conflictingSuppliers.some(s => s.id !== supplierIdNum)) {
-             return NextResponse.json({ error: 'Este email já está em uso por outro fornecedor.' }, { status: 409 });
-        }
+      if (existingSupplierByEmail) {
+        return NextResponse.json({ error: 'Este email já está em uso por outro fornecedor.' }, { status: 409 });
       }
     }
-     // Verificar se a categoria fornecida existe (se categoryId for fornecido e diferente de null)
-    if (dataToUpdate.categoryId !== undefined && dataToUpdate.categoryId !== null) { // Checa se foi passado, incluindo null para desassociar
-        if (dataToUpdate.categoryId !== null) { // Apenas checa se não for para desassociar
-            const [categoryExists] = await db.select().from(supplierCategories).where(eq(supplierCategories.id, dataToUpdate.categoryId)).limit(1);
-            if (!categoryExists) {
-                return NextResponse.json({ error: 'Categoria fornecida não existe.' }, { status: 400 });
-            }
+
+    // Verificar se a categoria fornecida existe (se categoryId for fornecido e não for para desassociar)
+    if (dataToUpdate.categoryId !== undefined && dataToUpdate.categoryId !== null) {
+        const [categoryExists] = await db
+            .select({id: supplierCategories.id})
+            .from(supplierCategories)
+            .where(eq(supplierCategories.id, dataToUpdate.categoryId))
+            .limit(1);
+        if (!categoryExists) {
+            return NextResponse.json({ error: 'Categoria fornecida não existe.' }, { status: 400 });
         }
     }
 
-    // Se categoryId for explicitamente null, ele será definido como null. Se não for fornecido, não será alterado.
-    const payloadForDb: any = { ...dataToUpdate, updatedAt: new Date() };
-    if (dataToUpdate.categoryId === null) {
-        payloadForDb.categoryId = null;
-    } else if (dataToUpdate.categoryId !== undefined) {
-        payloadForDb.categoryId = dataToUpdate.categoryId;
-    }
-    // Remover categoryId do payload se não foi intencionalmente alterado para null ou um novo valor.
-    // Esta lógica está um pouco confusa, Drizzle lida com `undefined` em `set` não alterando o campo.
-    // O ideal é construir o objeto `set` apenas com os campos que realmente mudaram.
+    // Construir o payload de atualização apenas com os campos fornecidos
+    const updatePayload: Partial<typeof suppliers.$inferInsert> = { updatedAt: new Date() };
+    if (dataToUpdate.name !== undefined) updatePayload.name = dataToUpdate.name;
+    if (dataToUpdate.contactPerson !== undefined) updatePayload.contactPerson = dataToUpdate.contactPerson;
+    // Permitir que o email seja definido como null se o schema permitir (e o Zod schema também)
+    if (dataToUpdate.email !== undefined) updatePayload.email = dataToUpdate.email;
+    if (dataToUpdate.phone !== undefined) updatePayload.phone = dataToUpdate.phone;
+    if (dataToUpdate.notes !== undefined) updatePayload.notes = dataToUpdate.notes;
+    // Se categoryId for passado como null, ele desassocia. Se for um número, associa. Se undefined, não mexe.
+    if (dataToUpdate.categoryId !== undefined) updatePayload.categoryId = dataToUpdate.categoryId;
 
-    const finalPayload: Partial<typeof suppliers.$inferInsert> = { updatedAt: new Date() };
-    if (dataToUpdate.name !== undefined) finalPayload.name = dataToUpdate.name;
-    if (dataToUpdate.contactPerson !== undefined) finalPayload.contactPerson = dataToUpdate.contactPerson;
-    if (dataToUpdate.email !== undefined) finalPayload.email = dataToUpdate.email;
-    if (dataToUpdate.phone !== undefined) finalPayload.phone = dataToUpdate.phone;
-    if (dataToUpdate.notes !== undefined) finalPayload.notes = dataToUpdate.notes;
-    if (dataToUpdate.categoryId !== undefined) finalPayload.categoryId = dataToUpdate.categoryId; // Permite setar para null
-
-
-    const [updatedSupplier] = await db
-      .update(suppliers)
-      .set(finalPayload)
-      .where(eq(suppliers.id, supplierIdNum))
-      .returning();
 
     const [updatedSupplier] = await db
       .update(suppliers)

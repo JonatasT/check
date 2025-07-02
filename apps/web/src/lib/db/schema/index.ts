@@ -19,8 +19,10 @@ export const events = pgTable('events', {
   date: timestamp('date').notNull(),
   location: varchar('location', { length: 255 }),
   organizerId: integer('organizer_id').references(() => users.id), // Chave estrangeira para users
-  eventType: varchar('event_type', { length: 100 }), // Ex: Casamento, Corporativo, Show, Aniversário
-  eventSize: varchar('event_size', { length: 50 }), // Ex: Pequeno, Médio, Grande (ou Estimativa de público como string/int)
+  // eventType: varchar('event_type', { length: 100 }), // Removido, substituído por eventTypeId
+  eventTypeId: integer('event_type_id').references(() => eventTypes.id),
+  // eventSize: varchar('event_size', { length: 50 }), // Removido, substituído por eventSizeId
+  eventSizeId: integer('event_size_id').references(() => eventSizes.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -30,14 +32,29 @@ export const usersRelations = relations(users, ({ many }) => ({
   organizedEvents: many(events, { relationName: 'organizedBy' }),
 }));
 
-export const eventsRelations = relations(events, ({ one })
+export const eventsRelations = relations(events, ({ one, many })
  => ({
   organizer: one(users, {
     fields: [events.organizerId],
     references: [users.id],
     relationName: 'organizedBy',
   }),
+  eventType: one(eventTypes, {
+    fields: [events.eventTypeId],
+    references: [eventTypes.id],
+    relationName: 'eventsOfType',
+  }),
+  eventSize: one(eventSizes, { // Relação com eventSizes - corrigido nome da relação para eventSize
+    fields: [events.eventSizeId],
+    references: [eventSizes.id],
+    relationName: 'eventsOfSize',
+  }),
+  contracts: many(contracts),
+  financialTransactions: many(financialTransactions),
+  eventSuppliers: many(eventSuppliers, { relationName: 'eventToSuppliers' }),
 }));
+
+// Tipos de Evento
 
 // Adicionaremos mais tabelas aqui depois (Financeiro, Fornecedores etc.)
 
@@ -180,6 +197,40 @@ export const eventSuppliersRelations = relations(eventSuppliers, ({ one }) => ({
     relationName: 'supplierToEvents',
   }),
 }));
+
+// Tipos de Evento
+export const eventTypes = pgTable('event_types', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull().unique(),
+  description: text('description'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const eventTypesRelations = relations(eventTypes, ({ many }) => ({
+  events: many(events, { relationName: 'eventsOfType' }),
+}));
+
+// Remover o campo antigo: eventType: varchar('event_type', { length: 100 }), // Já removido acima
+
+// Tamanhos de Evento (Categorias de Tamanho)
+export const eventSizes = pgTable('event_sizes', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 50 }).notNull().unique(), // Ex: Pequeno, Médio, Grande, Personalizado
+  description: text('description'), // Ex: "Até 50 pessoas", "50-200 pessoas"
+  minAttendees: integer('min_attendees'),
+  maxAttendees: integer('max_attendees'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const eventSizesRelations = relations(eventSizes, ({ many }) => ({
+  events: many(events, { relationName: 'eventsOfSize' }),
+}));
+
+// Na tabela 'events':
+// eventSizeId: integer('event_size_id').references(() => eventSizes.id), // Já adicionado
+// Remover o campo antigo: eventSize: varchar('event_size', { length: 50 }), // Já removido acima
 
 
 // Comunicação Log (para rastrear SMS, WhatsApp, Email enviados)

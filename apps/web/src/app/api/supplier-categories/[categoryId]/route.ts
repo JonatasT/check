@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { supplierCategories, suppliers } from '@/lib/db/schema'; // Importar suppliers para verificar FK
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
 import { eq, count } from 'drizzle-orm';
 
@@ -19,7 +19,7 @@ const categoryUpdateSchema = z.object({
 
 // GET: Buscar uma categoria específica
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
 // PUT: Atualizar uma categoria de fornecedor
 export async function PUT(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   // Adicionar verificação de role/permissão aqui (ex: admin)
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 
 // DELETE: Excluir uma categoria de fornecedor
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   // Adicionar verificação de role/permissão aqui (ex: admin)
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { events, supplierCategories } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 
 interface RouteContext {
   params: {
@@ -69,7 +69,7 @@ const suggestionRules: SuggestionRule[] = [
 ];
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }

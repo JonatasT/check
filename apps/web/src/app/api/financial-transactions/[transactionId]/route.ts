@@ -1,8 +1,8 @@
 // apps/web/src/app/api/financial-transactions/[transactionId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { financialTransactions, events } from '@/lib/db/schema';
-import { getAuth } from '@clerk/nextjs/server';
+import { financialTransactions, events, users } from '@/lib/db/schema'; // Adicionado users
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
 
@@ -28,7 +28,7 @@ const updateTransactionSchema = z.object({
 
 // PUT: Atualizar uma transação financeira existente
 export async function PUT(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
@@ -105,7 +105,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 
 // DELETE: Excluir uma transação financeira
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }

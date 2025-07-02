@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { supplierCategories } from '@/lib/db/schema';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server'; // Alterado para auth
 import { z } from 'zod';
 import { asc, eq } from 'drizzle-orm';
 
@@ -13,7 +13,7 @@ const categorySchema = z.object({
 
 // GET: Listar todas as categorias de fornecedores
 export async function GET(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   if (!clerkUserId) { // Apenas usuários logados podem ver, ajuste se necessário
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
 // POST: Criar uma nova categoria de fornecedor
 export async function POST(request: NextRequest) {
-  const { userId: clerkUserId } = getAuth(request);
+  const { userId: clerkUserId } = auth(); // Alterado para auth()
   // Idealmente, apenas administradores ou usuários com permissão específica podem criar categorias.
   // Adicionar verificação de role/permissão aqui. Por ora, qualquer usuário logado pode.
   if (!clerkUserId) {
