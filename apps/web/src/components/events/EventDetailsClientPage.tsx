@@ -1,7 +1,7 @@
 // apps/web/src/components/events/EventDetailsClientPage.tsx
 'use client';
 
-import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import React, { useState, useEffect, FormEvent, ChangeEvent, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,11 +26,11 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Adicionado Tabs
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircleIcon, EditIcon, Trash2Icon, DollarSignIcon, UsersIcon, LinkIcon } from 'lucide-react'; // Adicionado UsersIcon, LinkIcon
+import { PlusCircleIcon, EditIcon, Trash2Icon, DollarSignIcon, UsersIcon, LinkIcon, MessageSquareIcon } from 'lucide-react'; // Adicionado MessageSquareIcon
 import dayjs from 'dayjs';
-import 'dayjs/locale/pt-br'; // Para formatação de data
+import 'dayjs/locale/pt-br';
 dayjs.locale('pt-br');
 
 interface EventData {
@@ -124,6 +124,39 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
   // Estado para sugestões de fornecedores
   const [supplierSuggestions, setSupplierSuggestions] = useState<SupplierSuggestion[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+  // Estados para Modal de Envio de Mensagem
+  const [isSendMessageModalOpen, setIsSendMessageModalOpen] = useState(false);
+  const [currentSupplierForMessage, setCurrentSupplierForMessage] = useState<EventSupplier | null>(null);
+  const [messageChannel, setMessageChannel] = useState<'whatsapp' | 'email' | 'sms'>('whatsapp');
+  const [selectedMessageTemplate, setSelectedMessageTemplate] = useState<string>('');
+  const [templateVariables, setTemplateVariables] = useState<Record<string, string>>({});
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  // Mock de templates de mensagem
+  const MOCK_MESSAGE_TEMPLATES = [
+    {
+      id: 'convite_evento',
+      name: 'Convite para Evento',
+      channel: 'whatsapp', // Pode ser específico do canal ou genérico
+      text: 'Olá {{nome_fornecedor}}, gostaríamos de convidá-lo para o evento "{{nome_evento}}" que acontecerá em {{data_evento}}. Detalhes: {{detalhes_adicionais}}. Por favor, confirme sua disponibilidade.',
+      variables: ['nome_fornecedor', 'nome_evento', 'data_evento', 'detalhes_adicionais']
+    },
+    {
+      id: 'lembrete_evento',
+      name: 'Lembrete de Evento',
+      channel: 'whatsapp',
+      text: 'Lembrete: Olá {{nome_fornecedor}}, o evento "{{nome_evento}}" será em {{data_evento}}. Contamos com sua presença!',
+      variables: ['nome_fornecedor', 'nome_evento', 'data_evento']
+    },
+    {
+      id: 'agradecimento_pos_evento',
+      name: 'Agradecimento Pós-Evento',
+      channel: 'email', // Exemplo para outro canal
+      text: 'Olá {{nome_fornecedor}}, obrigado por sua participação e excelente trabalho no evento "{{nome_evento}}". Atenciosamente, {{nome_organizador}}.',
+      variables: ['nome_fornecedor', 'nome_evento', 'nome_organizador']
+    }
+  ];
 
 
   const fetchEventDetails = useCallback(async () => {
@@ -322,7 +355,7 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
   };
 
   const handleRemoveSupplierFromEvent = async (eventSupplierId: number, supplierName: string | null) => {
-    if (!window.confirm(`Tem certeza que deseja desassociar o fornecedor "${supplierName || 'ID: '+ eventSupplierId}" deste evento?`)) return; // Corrigido supplierId para eventSupplierId
+    if (!window.confirm(`Tem certeza que deseja desassociar o fornecedor "${supplierName || 'ID: '+ eventSupplierId}" deste evento?`)) return;
     try {
         const response = await fetch(`/api/event-suppliers/${eventSupplierId}`, {method: 'DELETE'});
         const responseData = await response.json();
@@ -335,6 +368,78 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
         toast({title: "Erro ao Desassociar", description: err.message, variant: "destructive"});
     }
   };
+
+  const handleOpenSendMessageModal = (supplier: EventSupplier) => {
+    setCurrentSupplierForMessage(supplier);
+    setSelectedMessageTemplate(''); // Reset template
+    setTemplateVariables({});     // Reset variáveis
+    setMessageChannel('whatsapp'); // Default para whatsapp
+    setIsSendMessageModalOpen(true);
+  };
+
+  const handleMessageTemplateChange = (templateId: string) => {
+    setSelectedMessageTemplate(templateId);
+    setTemplateVariables({}); // Resetar variáveis ao mudar template
+  };
+
+  const handleTemplateVariableChange = (variableName: string, value: string) => {
+    setTemplateVariables(prev => ({ ...prev, [variableName]: value }));
+  };
+
+  const handleSendMessageSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!currentSupplierForMessage || !selectedMessageTemplate) {
+        toast({title: "Erro", description: "Fornecedor ou template não selecionado.", variant: "destructive"});
+        return;
+    }
+    setIsSendingMessage(true);
+
+    const template = MOCK_MESSAGE_TEMPLATES.find(t => t.id === selectedMessageTemplate);
+    if (!template) {
+        toast({title: "Erro", description: "Template não encontrado.", variant: "destructive"});
+        setIsSendingMessage(false);
+        return;
+    }
+
+    // Simulação de preenchimento automático de algumas variáveis
+    let filledVariables = { ...templateVariables };
+    if (template.variables.includes('nome_fornecedor') && currentSupplierForMessage.supplierName) {
+        filledVariables['nome_fornecedor'] = filledVariables['nome_fornecedor'] || currentSupplierForMessage.supplierName;
+    }
+    if (template.variables.includes('nome_evento') && eventDetails?.event?.name) {
+        filledVariables['nome_evento'] = filledVariables['nome_evento'] || eventDetails.event.name;
+    }
+    if (template.variables.includes('data_evento') && eventDetails?.event?.date) {
+        filledVariables['data_evento'] = filledVariables['data_evento'] || dayjs(eventDetails.event.date).format('DD/MM/YYYY');
+    }
+     if (template.variables.includes('nome_organizador') && eventDetails?.event?.organizerName) {
+        filledVariables['nome_organizador'] = filledVariables['nome_organizador'] || eventDetails.event.organizerName;
+    }
+
+
+    console.log("Preparando para enviar mensagem:", {
+        supplierId: currentSupplierForMessage.supplierId,
+        supplierName: currentSupplierForMessage.supplierName,
+        channel: messageChannel,
+        templateId: selectedMessageTemplate,
+        templateName: template?.name,
+        variables: filledVariables,
+        // Adicionar aqui o número de telefone/email do fornecedor
+        recipient: messageChannel === 'whatsapp' ? currentSupplierForMessage.supplierPhone : currentSupplierForMessage.supplierEmail,
+    });
+
+    // TODO: Chamar a API route POST /api/communications/send-message (a ser criada)
+    // Por enquanto, apenas um log e um toast de sucesso simulado.
+
+    // Simulação de chamada de API
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    toast({title: "Mensagem (Simulada) Enviada!", description: `Mensagem do template "${template.name}" para ${currentSupplierForMessage.supplierName} via ${messageChannel}.`});
+    setIsSendingMessage(false);
+    setIsSendMessageModalOpen(false);
+  };
+
+  const currentTemplateObject = MOCK_MESSAGE_TEMPLATES.find(t => t.id === selectedMessageTemplate);
 
 
   if (isLoading) return <div className="text-center py-10">Carregando...</div>;
@@ -569,7 +674,10 @@ export default function EventDetailsClientPage({ eventId }: EventDetailsClientPa
                                             <TableCell>{as.supplierContactPerson || as.supplierPhone || 'N/A'}</TableCell>
                                             <TableCell>{as.supplierEmail || 'N/A'}</TableCell>
                                             <TableCell>{as.roleInEvent || 'N/A'}</TableCell>
-                                            <TableCell className="text-right">
+                                            <TableCell className="text-right space-x-1">
+                                                <Button variant="outline" size="icon" onClick={() => handleOpenSendMessageModal(as)} title="Enviar Mensagem">
+                                                    <MessageSquareIcon className="h-4 w-4" />
+                                                </Button>
                                                 <Button variant="destructive" size="icon" onClick={() => handleRemoveSupplierFromEvent(as.eventSupplierId, as.supplierName)} title="Desassociar Fornecedor">
                                                     <Trash2Icon className="h-4 w-4" />
                                                 </Button>
